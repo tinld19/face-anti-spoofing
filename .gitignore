@@ -1,0 +1,56 @@
+# Repo-level .gitignore for face-anti-spoofing
+
+# User-requested ignores
+Data/
+project/
+face.ipynb
+43852322.png
+
+# Keep existing ignores from HoangTPV1
+CelebA_Spoof/
+CelebA_Spoof_archive/
+CelebA_Spoof_crop/
+logs/
+tmp/
+test_imgs/
+pyrightconfig.json
+*.vscode
+__init.py__
+
+# Python bytecode
+*.py[cod]
+**/__pycache__/
+
+# Python packaging
+*.egg-info/
+*.dist-info/
+.eggs/
+*.egg
+
+# Development and testing
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments
+env/
+venv/
+.venv/
+
+# IDE files
+.idea/
+.vscode/
+.pylintrc
+
+# Model binaries and large files
+saved_models/
+*.onnx
+*.pth
+*.pt
+
+# OS and misc
+.DS_Store
+Thumbs.db
+*.log
