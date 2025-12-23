@@ -4,6 +4,7 @@ import time
 import numpy as np
 from .utils import non_max_suppression, scale_coords, letterbox
 import os
+import warnings
 
 
 # onnx model
@@ -23,10 +24,12 @@ class YOLOv5:
         ort_session = None
         input_name = None
         if os.path.isfile(path_onnx_model):
-            try:
-                ort_session = ort.InferenceSession(path_onnx_model, providers=['CUDAExecutionProvider'])
-            except:
-                ort_session = ort.InferenceSession(path_onnx_model, providers=['CPUExecutionProvider'])
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                try:
+                    ort_session = ort.InferenceSession(path_onnx_model, providers=['CUDAExecutionProvider'])
+                except:
+                    ort_session = ort.InferenceSession(path_onnx_model, providers=['CPUExecutionProvider'])
             input_name = ort_session.get_inputs()[0].name
         return ort_session, input_name
 

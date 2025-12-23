@@ -2,6 +2,7 @@ import cv2
 import onnxruntime as ort
 import numpy as np
 import os
+import warnings
 
 # onnx model
 class AntiSpoof:
@@ -17,12 +18,14 @@ class AntiSpoof:
         ort_session = None
         input_name = None
         if os.path.isfile(onnx_model_path):
-            try:
-                ort_session = ort.InferenceSession(onnx_model_path, 
-                                                   providers=['CUDAExecutionProvider'])
-            except:
-                ort_session = ort.InferenceSession(onnx_model_path, 
-                                                   providers=['CPUExecutionProvider']) 
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                try:
+                    ort_session = ort.InferenceSession(onnx_model_path, 
+                                                       providers=['CUDAExecutionProvider'])
+                except:
+                    ort_session = ort.InferenceSession(onnx_model_path, 
+                                                       providers=['CPUExecutionProvider']) 
             input_name = ort_session.get_inputs()[0].name
         return ort_session, input_name
 

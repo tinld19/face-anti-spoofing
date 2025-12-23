@@ -115,6 +115,7 @@ class Predictor:
         )
         return frame_bgr
 
+
 if __name__ == "__main__":
     # parsing arguments
     def check_zero_to_one(value):

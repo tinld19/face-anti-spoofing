@@ -1,5 +1,5 @@
-from inference.app import app
+from inference import run_app
 
 
 if __name__ == "__main__":
-    app()
+    run_app()
