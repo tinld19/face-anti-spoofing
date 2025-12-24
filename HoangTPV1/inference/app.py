@@ -11,6 +11,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import cv2
+import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from .video_predict import PredictionResult, Predictor
@@ -19,6 +20,7 @@ from .ui_layout import ToolbarLayout, CentralLayout, StatusBarLayout
 
 
 MODEL_EXT = "*.onnx"
+LBP_HIST_BINS = 32
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -54,6 +56,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_saved_ts = 0
         self.result_history = deque(maxlen=5)
         self.fps_counter = deque(maxlen=30)
+        self.lbp_histograms = {
+            "real": deque(maxlen=30),
+            "fake": deque(maxlen=30),
+        }
     
     def _build_ui(self):
         """Build UI components"""
@@ -207,8 +213,30 @@ class MainWindow(QtWidgets.QMainWindow):
             None
         )
         last_elapsed = self.result_history[-1].elapsed_ms
-        
-        return PredictionResult(last_bbox, majority_label, avg_score, last_elapsed, last_crop)
+        last_lbp = next(
+            (r.lbp_map for r in reversed(self.result_history) if r.lbp_map is not None),
+            None
+        )
+        last_edge = next(
+            (r.edge_map for r in reversed(self.result_history) if r.edge_map is not None),
+            None
+        )
+        last_laplacian = next(
+            (r.laplacian_var for r in reversed(self.result_history)
+             if r.laplacian_var is not None),
+            None
+        )
+
+        return PredictionResult(
+            last_bbox,
+            majority_label,
+            avg_score,
+            last_elapsed,
+            last_crop,
+            last_lbp,
+            last_edge,
+            last_laplacian,
+        )
     
     def _handle_result(self, result: PredictionResult):
         """Handle prediction result"""
@@ -234,6 +262,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if now - self.last_saved_ts > 1.0 and result.face_crop_bgr is not None:
             self.last_saved_ts = now
             self._add_snapshot(result.face_crop_bgr)
+
+        self._update_lbp_visuals(result)
     
     def _add_snapshot(self, crop_bgr):
         """Add snapshot to snapshot list"""
@@ -257,6 +287,43 @@ class MainWindow(QtWidgets.QMainWindow):
                 fps = (len(self.fps_counter) - 1) / time_delta
                 self.status_bar.update_fps(fps)
     
+    def _compute_lbp_hist(self, lbp_map: np.ndarray) -> np.ndarray:
+        """Build normalized histogram for LBP bins."""
+        hist, _ = np.histogram(lbp_map, bins=LBP_HIST_BINS, range=(0, 256), density=True)
+        return hist.astype(np.float32)
+
+    def _average_hist(self, queue: deque) -> np.ndarray | None:
+        if not queue:
+            return None
+        return np.stack(queue).mean(axis=0)
+
+    def _update_lbp_visuals(self, result: PredictionResult):
+        """Send histogram/edge insights to the info panel."""
+        if result.lbp_map is not None and result.label in (0, 1):
+            hist = self._compute_lbp_hist(result.lbp_map)
+            slot = "real" if result.label == 0 else "fake"
+            self.lbp_histograms[slot].append(hist)
+
+        avg_real = self._average_hist(self.lbp_histograms["real"])
+        avg_fake = self._average_hist(self.lbp_histograms["fake"])
+        edge_density = None
+        if result.edge_map is not None:
+            edge_density = (
+                np.count_nonzero(result.edge_map) / result.edge_map.size
+            )
+        real_count = len(self.lbp_histograms["real"])
+        fake_count = len(self.lbp_histograms["fake"])
+        self.central.info_panel.update_lbp_insights(
+            avg_real,
+            avg_fake,
+            result.label,
+            result.score,
+            edge_density,
+            result.laplacian_var,
+            real_count,
+            fake_count,
+        )
+
     def _log(self, text: str):
         """Log message"""
         self.central.info_panel.log_box.log(text)

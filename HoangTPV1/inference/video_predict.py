@@ -44,13 +44,42 @@ def increased_crop(img: np.ndarray, bbox: tuple, bbox_inc: float = 1.5) -> np.nd
     return img
 
 
+def compute_lbp(gray: np.ndarray, radius: int = 1) -> np.ndarray:
+    """Compute Local Binary Pattern map (8 neighbors, unsigned)."""
+    # pad to keep original size
+    padded = np.pad(gray, radius, mode="edge")
+    h, w = gray.shape
+    lbp = np.zeros((h, w), dtype=np.uint8)
+    offsets = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, 1), (1, 1), (1, 0),
+        (1, -1), (0, -1),
+    ]
+    for idx, (dy, dx) in enumerate(offsets):
+        neighbor = padded[radius + dy : radius + dy + h, radius + dx : radius + dx + w]
+        lbp |= ((neighbor >= gray).astype(np.uint8) << idx)
+    return cv2.normalize(lbp, None, 0, 255, cv2.NORM_MINMAX)
+
+
+def detect_edges(gray: np.ndarray) -> np.ndarray:
+    """Auto-threshold Canny edge detector with light blur for noise control."""
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    v = np.median(blurred)
+    lower = int(max(0, 0.66 * v))
+    upper = int(min(255, 1.33 * v))
+    return cv2.Canny(blurred, lower, upper)
+
+
 @dataclass
 class PredictionResult:
     bbox: tuple | None
     label: int | None
     score: float | None
     elapsed_ms: float
-    face_crop_bgr: np.ndarray | None
+    face_crop_bgr: np.ndarray | None = None
+    lbp_map: np.ndarray | None = None
+    edge_map: np.ndarray | None = None
+    laplacian_var: float | None = None
 
 
 class Predictor:
@@ -73,16 +102,29 @@ class Predictor:
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         det = self.face_detector([rgb])[0]
         if det is None or det.shape[0] == 0:
-            return PredictionResult(None, None, None, (time.time() - start) * 1000, None)
+            return PredictionResult(None, None, None, (time.time() - start) * 1000)
 
         bbox = det.flatten()[:4].astype(int)
         crop_rgb = increased_crop(rgb, bbox, bbox_inc=self.bbox_inc)
+        gray_crop = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2GRAY)
+        lbp_map = compute_lbp(gray_crop)
+        edge_map = detect_edges(gray_crop)
+        laplacian_var = float(cv2.Laplacian(gray_crop, cv2.CV_64F).var())
         pred = self.anti_spoof([crop_rgb])[0]
         score = float(pred[0][0])
         label = int(np.argmax(pred))
         elapsed_ms = (time.time() - start) * 1000
         crop_bgr = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
-        return PredictionResult(tuple(bbox), label, score, elapsed_ms, crop_bgr)
+        return PredictionResult(
+            tuple(bbox),
+            label,
+            score,
+            elapsed_ms,
+            crop_bgr,
+            lbp_map,
+            edge_map,
+            laplacian_var,
+        )
 
     def annotate(self, frame_bgr: np.ndarray, result: PredictionResult) -> np.ndarray:
         if result.bbox is None:
