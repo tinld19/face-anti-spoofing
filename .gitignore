@@ -2,6 +2,7 @@
 
 # User-requested ignores
 Data/
+CASIA-FASD
 project/
 face.ipynb
 43852322.png
